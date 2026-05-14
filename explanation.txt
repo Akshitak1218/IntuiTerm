@@ -1,0 +1,81 @@
+# IntuiTerm: Project Technical Deep-Dive & Interview Guide
+
+This document is designed to help a Computer Science student explain the architecture, design choices, and implementation details of IntuiTerm during a technical job interview.
+
+---
+
+## 1. Project Overview: What is IntuiTerm?
+IntuiTerm is a premium, cloud-native terminal emulator designed for the Windows ecosystem. It provides a Unix-like experience (via BusyBox) through a modern, high-fidelity web interface. It goes beyond a simple "black box" terminal by integrating:
+- **File Explorer**: Recursive directory management.
+- **AI Assistant**: Natural language-to-Bash command translation.
+- **System Telemetry**: Real-time resource monitoring (CPU/RAM).
+- **Session Multiplexing**: Drag-and-drop tab management for multiple terminal sessions.
+
+---
+
+## 2. The Tech Stack: Why These Choices?
+
+### Frontend: React + Vite + TypeScript
+- **React**: A JavaScript library for building user interfaces. 
+    *   *Why?* It uses a "Component-Based Architecture," allowing us to build the Terminal, Sidebar, and InfoPanel as independent, reusable blocks.
+- **Vite**: A build tool that serves code via native ES modules during development.
+    *   *Why?* It is significantly faster than older tools like Webpack. In an interview, mention that Vite uses "Hot Module Replacement" (HMR), which updates the UI instantly without a full page reload.
+- **TypeScript**: A "Typed" superset of JavaScript.
+    *   *Why?* It catches errors during development (compile-time) rather than at runtime. This is crucial for a terminal where handling raw data streams can easily lead to "undefined" errors.
+
+### Styling: Tailwind CSS + Vanilla CSS
+- **Tailwind**: A utility-first CSS framework.
+- **Vanilla CSS**: Used for the "Glassmorphism" effect.
+    *   *Why?* Tailwind handles layout and responsiveness quickly, while custom CSS allows for high-end visual effects like `backdrop-filter: blur()`, giving the app a premium "frosted glass" look.
+
+### Backend: Python + FastAPI
+- **FastAPI**: A modern, high-performance web framework for building APIs with Python.
+    *   *Why?* It is built on "Asynchronous" principles (using Python's `asyncio`). This is vital because the terminal needs to handle multiple simultaneous read/write operations without blocking the main server thread.
+
+---
+
+## 3. Key Concepts for the Interview
+
+### What is an API?
+**Definition**: Application Programming Interface. Think of it as a contract or a "waiter" between the Frontend and the Backend.
+**In this Project**: We use a REST API for the "Files" and "System Info" endpoints. The frontend sends a request (e.g., "Give me the files"), and the backend responds with a JSON object.
+
+### What are WebSockets?
+**Definition**: A persistent connection between client and server that allows "Full-Duplex" (two-way) communication.
+**In this Project**: Standard HTTP is "request-response" (one-way). A terminal requires real-time streaming—every keystroke must go to the server, and every bit of output must come back instantly. WebSockets allow this continuous "tunnel" to stay open.
+
+### What is a PTY (Pseudo-Terminal)?
+**Definition**: A software component that emulates a physical terminal.
+**In this Project**: On Windows, we use a PTY to launch `busybox.exe`. The PTY captures the output from the shell and redirects it to our FastAPI server, which then sends it over a WebSocket to the browser.
+
+---
+
+## 4. Potential Interview Questions
+
+**Q: Why didn't you use Flask for the backend?**
+**A**: Flask is synchronous by nature. Handling multiple concurrent terminal sessions with WebSockets in Flask is difficult and often requires additional libraries like Gevent. FastAPI is natively asynchronous and much faster for I/O-bound tasks like terminal streaming.
+
+**Q: How did you handle security with the AI Assistant?**
+**A**: I implemented **Secret Management**. Initially, I used a hardcoded key for prototyping, but for the production version, I switched to **Environment Variables**. This ensures the API key never touches the Git history, preventing unauthorized access.
+
+**Q: What was the biggest challenge in this project?**
+**A**: Integrating a Unix-like environment on Windows. I solved this by bundling a pre-configured **BusyBox** binary and building a Python service that bridges the Windows OS with the web-based `xterm.js` renderer.
+
+**Q: How do you handle multi-tabbing?**
+**A**: I used a custom React Hook (`useTerminalSessions`) to manage a global state of active sessions. Each session has a unique ID, its own WebSocket connection, and its own xterm instance.
+
+---
+
+## 5. Basic Operation Commands
+
+If the interviewer asks you to run or build the project:
+- **`npm install`**: Downloads the dependencies listed in `package.json`.
+- **`npm run dev`**: Starts the Vite development server.
+- **`pip install -r requirements.txt`**: Installs the Python backend dependencies.
+- **`python run.py`**: Launches the FastAPI backend.
+- **`git commit -m "..."`**: Records changes to the repository with a technical description.
+
+---
+
+## 6. Closing Statement for Interviews
+"IntuiTerm demonstrates my ability to build a full-stack system that handles real-time data streaming, implements a modern design system, and bridges the gap between low-level system utilities (PTY/BusyBox) and high-level web technologies (React/FastAPI)."
