@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Explicit exclusion
+SETUP_FROM_ZERO_WINDOWS.txt
