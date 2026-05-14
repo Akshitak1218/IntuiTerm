@@ -1,0 +1,286 @@
+IntuiTerm - Complete Feature and Architecture Explanation (Interview Version)
+
+Audience:
+This document is written for someone with CS fundamentals who has not seen this project before.
+
+Goal:
+Explain what IntuiTerm does, every major feature implemented, how each feature works technically, and why each design choice was made.
+
+
+1) Project Summary
+
+IntuiTerm is a full-stack, browser-based terminal workspace.
+It combines:
+- interactive terminal sessions
+- file exploration
+- command productivity shortcuts
+- system stats
+- AI-assisted natural language command translation
+
+The key idea is to deliver a Linux-like terminal UX inside a modern web app while keeping the architecture modular and interview-ready.
+
+
+2) Implemented Features (What, How, Why)
+
+2.1 Multi-Session Terminal (Core Feature)
+
+What it does:
+- Create and manage multiple terminal sessions.
+- Switch between sessions via tabbed UI.
+- Close and reorder sessions.
+
+How it is implemented:
+- Frontend uses `xterm.js` for terminal rendering.
+- Session state is managed in `frontend/src/hooks/useTerminalSessions.ts`.
+- Each session opens a WebSocket connection to `WS /api/v1/ws/{session_id}`.
+- Backend `terminal.py` creates and tracks PTY processes per session.
+
+Why this design:
+- Persistent session model matches real terminal behavior.
+- WebSocket + PTY gives low-latency interaction and interactive command support.
+
+
+2.2 File Explorer with Live Updates
+
+What it does:
+- Displays project files/folders in a collapsible tree.
+- Supports search filtering.
+- Refreshes automatically so new files appear without manual refresh.
+
+How it is implemented:
+- Frontend component: `frontend/src/components/FileExplorer.tsx`.
+- Backend endpoint: `GET /api/v1/files` in `backend/app/api/routes.py`.
+- Backend builds a structured tree (`FileNode`) using controlled directory scanning.
+- Frontend polls periodically for updates and also supports manual refresh.
+
+Why this design:
+- REST endpoint keeps explorer simple and deterministic.
+- Polling-based live updates are straightforward and sufficient for local workflows.
+
+
+2.3 Command Shortcut Panel (Double-click + Drag-and-drop)
+
+What it does:
+- Users can trigger common commands quickly.
+- Commands can be double-clicked or dragged into terminal flow.
+- Some commands run directly without input (for example `pwd`, `ls -la`).
+- Commands that need parameters open a modal input workflow.
+- `cp` and `mv` explicitly collect source and destination.
+- `cd` wraps directory input in quotes.
+
+How it is implemented:
+- Shortcut definitions live in `Sidebar.tsx`.
+- Command modal orchestration and command formatting logic live in `App.tsx`.
+
+Why this design:
+- Reduces typing overhead for common workflows.
+- Keeps command generation predictable and visible to the user.
+
+
+2.4 AI Assistant (Natural Language -> Shell Command)
+
+What it does:
+- User describes intent in plain English.
+- App returns and executes shell command output.
+- If one model fails, fallback models are attempted.
+
+How it is implemented:
+- UI trigger in `frontend/src/components/InfoPanel.tsx`.
+- Backend route: `POST /api/v1/ai/translate`.
+- Service layer: `backend/app/services/ai.py`.
+- Provider: **OpenRouter API** (`https://openrouter.ai/api/v1/chat/completions`).
+- Auth: `OPENROUTER_API_KEY` from environment.
+- Multiple configured models are tried sequentially until one succeeds.
+- A strict system prompt forces command-only output.
+
+Models currently configured in code:
+- `poolside/laguna-m.1:free`
+- `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`
+- `liquid/lfm-2.5-1.2b-thinking:free`
+- `liquid/lfm-2.5-1.2b-instruct:free`
+- `poolside/laguna-xs.2:free`
+- `inclusionai/ring-2.6-1t:free`
+
+Why OpenRouter here:
+- One API surface to route requests across multiple models.
+- Easy fallback strategy when individual models fail.
+- Useful for balancing availability, cost, and latency in experimentation.
+
+Why AI is useful in this app:
+- Lowers CLI barrier for users who know intent but not syntax.
+- Speeds repetitive command discovery.
+
+
+2.5 System Stats Panel
+
+What it does:
+- Shows CPU usage, memory usage, host details, uptime, and active sessions.
+
+How it is implemented:
+- Frontend component: `SystemStats.tsx`.
+- Backend endpoint: `GET /api/v1/system-info`.
+- Backend uses `psutil` and platform metadata.
+
+Why this design:
+- Gives contextual feedback while users run commands.
+- Useful in demos/interviews to show observability integration.
+
+
+2.6 Theme Handling
+
+What it does:
+- Supports terminal/UI theme switching among dark themes.
+- Applies theme values consistently to terminal and app CSS variables.
+
+How it is implemented:
+- Theme definitions in `useTerminalSessions.ts`.
+- Selected theme updates xterm theme and root CSS custom properties.
+- Topbar exposes click-based theme menu.
+
+Why this design:
+- Keeps styling centralized and maintainable.
+- Makes terminal and panel theming coherent.
+
+
+2.7 Editor Workflow and Compatibility
+
+What it does:
+- Supports editing through `vi` command flow.
+- Handles Windows environment constraints for terminal tooling.
+
+How it is implemented:
+- Backend terminal service configures PTY env variables and runtime paths.
+- BusyBox is used to provide Linux-like tooling on Windows.
+- Command remapping logic ensures editor command path stability.
+
+Why this design:
+- Interactive editors require PTY behavior, not one-shot subprocess execution.
+- BusyBox increases portability and command consistency across systems.
+
+
+3) Terminology Explained in Project Context
+
+API:
+- Contract for communication between frontend and backend.
+- Used for file listing, system metrics, and AI translation.
+
+WebSocket:
+- Long-lived two-way connection.
+- Used for real-time terminal keystrokes/output.
+
+PTY (Pseudo-Terminal):
+- Virtual terminal interface for interactive shell programs.
+- Required for terminal behavior (not just command execution).
+
+OpenRouter:
+- LLM gateway provider used to call different language models via one endpoint.
+- In this app, it powers natural-language command translation.
+
+
+4) Why This Stack (And Why Not Simpler Alternatives)
+
+React + TypeScript:
+- Component architecture + strong typing for complex UI state.
+
+Vite:
+- Fast development loop and modern ESM pipeline.
+- Better iteration speed than older default bundlers.
+
+FastAPI:
+- Native async + WebSocket support + typed schemas.
+- Cleaner fit than minimal synchronous frameworks for this workload.
+
+BusyBox on Windows:
+- Provides Linux-like command behavior without requiring native Linux host setup.
+
+
+5) Repository Structure and Modularization Rationale
+
+frontend/
+- `components/` for view modules (terminal pane, explorer, sidebar, info panel, topbar)
+- `hooks/` for stateful reusable logic (`useTerminalSessions`)
+- `App.tsx` for orchestration and cross-component command modal flow
+
+backend/
+- `api/routes.py` for transport and endpoint definitions
+- `services/terminal.py` for PTY/session lifecycle
+- `services/ai.py` for NL translation pipeline via OpenRouter
+- `bin/` for runtime binaries/assets (BusyBox, terminfo)
+
+Why modularize:
+- easier debugging (feature bugs map to narrower files)
+- team parallelism (UI, terminal runtime, AI route can evolve independently)
+- cleaner testing boundaries
+
+Tradeoff:
+- more files and indirection compared to monolithic quick prototypes
+
+
+6) Coding Conventions
+
+Frontend:
+- Functional React components
+- TypeScript interfaces for data contracts
+- Command logic centralized in orchestration layer
+
+Backend:
+- Async route patterns where needed
+- Service layer abstraction from routing
+- Pydantic request/response models
+
+General:
+- Keep behavior changes scoped to owning modules
+- Prefer explicit data contracts over implicit structures
+
+
+7) Typical End-to-End Flows
+
+Flow A - Terminal command:
+1. User types command in terminal UI.
+2. Frontend sends command over WebSocket.
+3. Backend forwards input to PTY process.
+4. PTY output streams back over WebSocket.
+5. Frontend renders output in xterm.
+
+Flow B - AI-assisted command:
+1. User enters natural language in AI panel.
+2. Frontend calls `POST /api/v1/ai/translate`.
+3. Backend `ai.py` submits prompt to OpenRouter.
+4. First successful model response returns shell command.
+5. Frontend sends command into active terminal session.
+
+Flow C - File explorer update:
+1. Frontend requests `GET /api/v1/files`.
+2. Backend returns structured tree.
+3. Frontend renders and filters tree.
+4. Periodic polling picks up newly created files.
+
+
+8) Interview-Ready Questions and Answer Direction
+
+Q: Why use WebSocket for terminal but REST for file explorer?
+A: Terminal requires continuous bidirectional low-latency stream; file explorer is snapshot request/response data.
+
+Q: Why route AI through backend instead of direct frontend call?
+A: Protect API key, centralize prompt policy, control fallback behavior, and keep audit/control point server-side.
+
+Q: Why multiple models in AI pipeline?
+A: Improves reliability; if one model times out/fails, fallback preserves feature continuity.
+
+Q: Why not run shell commands directly per request?
+A: Interactive terminal/editor behavior requires persistent PTY session context.
+
+Q: What would you improve next?
+A: add auth, command policy restrictions, richer audit logs, and production-grade deployment hardening.
+
+
+9) Final Positioning for Interview
+
+IntuiTerm demonstrates:
+- real-time systems integration (WebSocket + PTY)
+- full-stack architecture skills (React/TS + FastAPI/Python)
+- practical AI integration (OpenRouter multi-model fallback)
+- modular engineering discipline for maintainability
+
+If presenting this project, emphasize not only what features exist, but also why each technical decision matches the user interaction model and operational constraints.
+
