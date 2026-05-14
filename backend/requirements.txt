@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+websockets
+pywinpty
+pydantic
+pydantic-settings
